@@ -2,23 +2,34 @@ from PyQt5.QtWidgets import *
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 from PyQt5.uic import loadUiType
-from os import path
+from os import *
 import sys
 import sqlite3
 from xlsxwriter import *
 from xlrd import *
+
+import random
+import smtplib
+from email.message import EmailMessage
+import ssl
+
+
 
 import datetime
 import pyqtgraph as pg
 from PyQt5 import QtWidgets, QtCore, QtGui #pyqt stuff
 QtWidgets.QApplication.setAttribute(QtCore.Qt.AA_EnableHighDpiScaling, True) #enable highdpi scaling
 QtWidgets.QApplication.setAttribute(QtCore.Qt.AA_UseHighDpiPixmaps, True) #use highdpi icons
+
+from main import Ui_MainWindow
 MAIN_UI,_= loadUiType("main.ui")
 
 # gettig id and branch from the user who just login
 #Giving a default values
 employee_id = 0
 employee_branch = 0
+#generate a rando number for password recovery
+password_code = random.randint(1000, 9999)
 
 
 class MainApp(QMainWindow, MAIN_UI):
@@ -34,7 +45,7 @@ class MainApp(QMainWindow, MAIN_UI):
         self.Ui_Changes()
         #to open in this tab
         #self.Open_Daily_Movements_tab()
-        #self.Open_Login_tab()
+        self.Open_Login_tab()
         
         self.Show_All_categories()
         self.Show_All_branchies()
@@ -71,10 +82,12 @@ class MainApp(QMainWindow, MAIN_UI):
         self.pushButton_5.clicked.connect(self.Open_History_tab)
         self.pushButton_6.clicked.connect(self.Open_Reports_tab)
         self.pushButton_7.clicked.connect(self.Open_Settings_tab)
+        self.pushButton_46.clicked.connect(self.Open_Login_tab)
         self.pushButton_14.clicked.connect(self.Edit_Book_Search)
         self.pushButton_19.clicked.connect(self.Edit_Client_Search)
         self.pushButton_9.clicked.connect(self.All_Books_Filter)
         self.pushButton_13.clicked.connect(self.All_Clients_Filter)
+        
 
         self.pushButton_8.clicked.connect(self.Handel_Today_work)
         self.pushButton_21.clicked.connect(self.Add_New_branch)
@@ -86,15 +99,21 @@ class MainApp(QMainWindow, MAIN_UI):
         self.pushButton_17.clicked.connect(self.Add_New_Client)
         self.pushButton_15.clicked.connect(self.Edit_Book)
         self.pushButton_13.clicked.connect(self.Delete_Book)
+        self.pushButton_16.clicked.connect(self.All_Clients_Filter)
         self.pushButton_18.clicked.connect(self.Edit_Client)
         self.pushButton_35.clicked.connect(self.Export_Books)
         self.pushButton_20.clicked.connect(self.Delete_Client)
         self.pushButton_32.clicked.connect(self.check_employee)
         self.pushButton_28.clicked.connect(self.Edit_Employee)
         self.pushButton_30.clicked.connect(self.Add_Employee_Permissions)
-        self.pushButton_37.clicked.connect(self.Export_Client)
+        self.pushButton_37.clicked.connect(self.Export_Clients)
+        self.pushButton_39.clicked.connect(self.Export_History)
         ###### LOGIN
         self.pushButton_38.clicked.connect(self.Handel_Login)
+        self.pushButton_44.clicked.connect(self.Open_Rest_Password_Tab)
+        self.pushButton_47.clicked.connect(self.Handel_Reset_Password)
+        self.pushButton_50.clicked.connect(self.check_the_code)
+        self.pushButton_51.clicked.connect(self.Save_New_Password)
         #### Refresh
         # self.pushButton_49.clicked.connect(self.Refresh)
         
@@ -194,20 +213,77 @@ class MainApp(QMainWindow, MAIN_UI):
                     self.pushButton_27.setEnabled(True)
                     
                 self.Open_Daily_Movements_tab()
-        date = datetime.datetime.now()
-        ###################### Save to the history ###########################
-        action = str(1) 
-        table = str(4) 
-        self.cur.execute('''
-            INSERT INTO History (employee,action,db_table,date,branch)  
-            VALUES (?,?,?,?,?)           
-            ''',(employee_id,action,table,date,employee_branch))
-        self.db.commit()
-        self.Show_History()
-               
+            else:
+                self.groupBox_7.setEnabled(True)
+       
 
+
+
+
+      
+               
     def Handel_Reset_Password(self):
-        pass
+        receiver_email = self.lineEdit_50.text()
+        
+        #check if the email exists
+        self.cur.execute('''
+            SELECT name FROM employees WHERE email=?    
+        ''',(receiver_email,))    
+        data = self.cur.fetchone()
+          
+        if data:
+            print(data[0]) 
+            #sendig the code via email
+            sender_email = 'techameur@gmail.com'
+            email_password = 'bcsg bhcv kfnf cjxw'
+            subject = 'Reset Password Library management'
+            message = f'this is your reset password code : {password_code}'
+            print(f'password_code is {password_code}')
+            em= EmailMessage()
+            em['From'] = sender_email
+            em['To'] = receiver_email
+            em['Subject'] = subject
+            em.set_content(message)
+            #crypting
+            context = ssl.create_default_context()
+
+            with smtplib.SMTP_SSL('smtp.gmail.com',465,context=context) as smtp:
+                smtp.login(sender_email,email_password)
+                smtp.sendmail(sender_email,receiver_email,em.as_string())
+
+            self.statusBar().showMessage('Code has been sent')
+            #Enable the code line edit
+            self.lineEdit_52.setEnabled(True)
+            self.pushButton_50.setEnabled(True)
+            
+        if data == None:
+            self.statusBar().showMessage('Email does not exist')
+
+    #cheking if the codes are the same
+    def check_the_code(self):
+        code = int(self.lineEdit_52.text())
+        if code == password_code:
+            self.lineEdit_53.setEnabled(True)
+            self.lineEdit_54.setEnabled(True)
+            self.pushButton_51.setEnabled(True)
+            
+        else:
+            self.statusBar().showMessage('Code is wrong') 
+
+    # save the new password to db
+    def Save_New_Password(self):
+        email = self.lineEdit_50.text()
+        password1 = self.lineEdit_53.text()
+        password2 = self.lineEdit_54.text()
+        if password1 == password2:
+            self.cur.execute('''
+                UPDATE Employees SET password=? 
+                WHERE email=?
+            ''',(password1,email))
+            self.db.commit()
+            self.statusBar().showMessage('Password changed')
+        else:
+            self.statusBar().showMessage('Please retype the passwords correctly')
 
 
     def Handel_Today_work(self):
@@ -316,6 +392,9 @@ class MainApp(QMainWindow, MAIN_UI):
         self.tabWidget.setCurrentIndex(8)
         #To open it in the first tab
         self.tabWidget_4.setCurrentIndex(0)
+
+    def Open_Rest_Password_Tab(self):
+        self.tabWidget.setCurrentIndex(1)
 
 
 
@@ -492,24 +571,52 @@ class MainApp(QMainWindow, MAIN_UI):
             SELECT barcode , title , catigory_id , author_id , price FROM Books
         ''')
         data = self.cur.fetchall()
-        #create exel file
-        excel_file = Workbook('books_report.xlsx')
-        sheet_1 = excel_file.add_worksheet()
-        # wtrite data on the file
-        sheet_1.write(0,0,"Barcode")
-        sheet_1.write(0,1,"Title")
-        sheet_1.write(0,2,"Catigory")
-        sheet_1.write(0,3,"Author")
-        sheet_1.write(0,4,"Price")
+       
+         #Create exel file
+        file = Workbook('Reports/books.xlsx')
+        sheet_1 = file.add_worksheet()
+        #Add format
+        bold = file.add_format({'bold':1})
+        date = file.add_format({'num_format':"mmmm d yyyy"})
+        border = file.add_format({'border':True})
+        header = file.add_format({'bold':1 ,
+                                  'border':True ,
+                                  "align": "center",})
+        main_title = file.add_format({'bold':True,
+                                      'font_size':20,
+                                      "align": "center",
+                                      "valign": "vcenter",
+                                      })
+        sub_title = file.add_format({'bold':True,
+                                      "align": "center",
+                                      "valign": "vcenter",
+                                      })
         
-        row_number=1
+        price = file.add_format({'num_format' :'$#,##0'})
+        #Creating a title
+        sheet_1.merge_range('C3:F3','Clients Report',main_title)
+
+        sheet_1.merge_range('A5:C5' , 'Habib for library management',sub_title)
+
+        sheet_1.merge_range('D5:F5' , 'Phone : 0778111137' , sub_title)
+
+        #Creating Headers
+        sheet_1.write('A9','Code', header)
+        sheet_1.write('B9','Title', header)
+        sheet_1.write('C9','Catigory', header)
+        sheet_1.write('D9','Author', header)
+        sheet_1.write('E9','Price', header)
+
+        sheet_1.set_column(0,4,12)
+        # insert the data to the table
+        row_number=9
         for row in data:
             col_number = 0
             for item in row:
-                sheet_1.write(row_number,col_number,str(item))
+                sheet_1.write(row_number,col_number,str(item),border)
                 col_number+=1
             row_number+=1
-        excel_file.close()
+        file.close()
         self.statusBar().showMessage("Books Exported")
         
 
@@ -531,7 +638,43 @@ class MainApp(QMainWindow, MAIN_UI):
             self.tableWidget_4.insertRow(row_position)
         
     def All_Clients_Filter(self):
-        pass
+        #getting the data from user
+        employee_data = self.lineEdit_16.text()
+        
+        if self.comboBox_17.currentIndex () == 0:
+            print('name')
+            self.cur.execute('''
+            SELECT name,email,phone,national_id,date FROM Clients WHERE name=?
+            ''',(employee_data,))
+            data = self.cur.fetchall()
+            print(data)
+        if self.comboBox_17.currentIndex() == 1:
+            self.cur.execute('''
+            SELECT name,email,phone,national_id,date FROM Clients WHERE email=?
+            ''',(employee_data,))
+            data = self.cur.fetchall()
+            print(data)
+        if self.comboBox_17.currentIndex() == 2:
+            self.cur.execute('''
+            SELECT name,email,phone,national_id,date FROM Clients WHERE phone=?
+            ''',(employee_data,))
+            data = self.cur.fetchall()
+            print(data)
+        if self.comboBox_17.currentIndex() == 3:
+            self.cur.execute('''
+            SELECT name,email,phone,national_id,date FROM Clients WHERE national_id=?
+            ''',(employee_data,))
+            data = self.cur.fetchall()
+            print(data)
+
+        self.tableWidget_4.setRowCount(0)
+        self.tableWidget_4.insertRow(0)
+        for row,form in enumerate(data):
+            for col,item in enumerate(form):
+                self.tableWidget_4.setItem(row,col,QTableWidgetItem(str(item)))
+        row_position = self.tableWidget_4.rowCount()
+        self.tableWidget_4.insertRow(row_position)
+
 
     def Add_New_Client(self):
         name = self.lineEdit_17.text()
@@ -602,6 +745,69 @@ class MainApp(QMainWindow, MAIN_UI):
         self.lineEdit_23.setText(str(client[5]))
            
 
+    def Export_Clients(self):
+        #Getting data
+        self.cur.execute('''
+            SELECT name,email,phone,national_id,date FROM Clients
+        ''')
+        data = self.cur.fetchall()
+        print(data)
+        #Create exel file
+        file = Workbook('Reports/clients.xlsx')
+        sheet_1 = file.add_worksheet()
+        #Add format
+        bold = file.add_format({'bold':1})
+        date = file.add_format({'num_format':"mmmm d yyyy"})
+        border = file.add_format({'border':True})
+        header = file.add_format({'bold':1 ,
+                                  'border':True ,
+                                  "align": "center",})
+        main_title = file.add_format({'bold':True,
+                                      'font_size':20,
+                                      "align": "center",
+                                      "valign": "vcenter",
+                                      })
+        sub_title = file.add_format({'bold':True,
+                                      "align": "center",
+                                      "valign": "vcenter",
+                                      })
+        #Creating a title
+        sheet_1.merge_range('C3:D3','Clients Report',main_title)
+
+        sheet_1.merge_range('A5:B5' , 'Habib for library management',sub_title)
+
+        sheet_1.merge_range('D5:E5' , 'Phone : 0778111137' , sub_title)
+        #Creating Headers
+        sheet_1.write('A9','Name', header)
+        sheet_1.write('B9','Email', header)
+        sheet_1.write('C9','Phone', header)
+        sheet_1.write('D9','National ID', header)
+        sheet_1.write('E9','Date', header)
+
+        # insert the data to the table
+        row_count=9
+        for row in data:
+            col_count = 0
+            for item in row: 
+                # توسعة الاعمدة
+                if col_count == 4:
+                    sheet_1.set_column(
+                        col_count, #Starting column
+                        col_count , #Ending column
+                        30 , #width
+                    )
+                else:
+                    sheet_1.set_column(
+                        0 , #starting column
+                        3 , #end column
+                        15,
+                    )
+                sheet_1.write(row_count,col_count,str(item),border)
+                col_count+=1
+            row_count+=1
+        file.close()
+        self.statusBar().showMessage("Clients Exported")
+
 
     def Edit_Client(self):
         name = self.lineEdit_25.text()
@@ -610,7 +816,7 @@ class MainApp(QMainWindow, MAIN_UI):
         email = self.lineEdit_22.text()
        
         self.cur.execute('''
-            UPDATE Clients SET name=? , phone=? , national_id=? , email=? 
+            UPDATE or IGNORE Clients SET name=? , phone=? , national_id=? , email=? 
         ''',(name,phone,national_id,email))
         self.db.commit()
         self.statusBar().showMessage("Client Edited")
@@ -627,6 +833,7 @@ class MainApp(QMainWindow, MAIN_UI):
             ''',(employee_id,action,table,date,employee_branch))
         self.db.commit()
         self.Show_History()
+
     def Delete_Client(self):
         client_data = self.lineEdit_21.text()
         #name
@@ -665,7 +872,7 @@ class MainApp(QMainWindow, MAIN_UI):
             ''',(employee_id,action,table,date,employee_branch))
         self.db.commit()
         self.Show_History()
-    def Export_Client(self):
+  
         # Get data from db
         self.cur.execute('''
             SELECT name , email, phone , national_id  FROM Clients
@@ -796,7 +1003,116 @@ class MainApp(QMainWindow, MAIN_UI):
             row_position = self.tableWidget_3.rowCount()
             self.tableWidget_3.insertRow(row_position)
         
-        
+    def Export_History(self):
+        #Getting data
+        self.cur.execute('''
+        SELECT employee , db_table , branch , action , date FROM  history
+    ''')
+        data = self.cur.fetchall()
+        #Create Ewel file
+        file = Workbook('Reports/history.xlsx')
+        sheet_1 = file.add_worksheet()
+        #Add format
+        bold = file.add_format({'bold':1})
+        date = file.add_format({'num_format':"mmmm d yyyy"})
+        border = file.add_format({'border':True})
+        header = file.add_format({'bold':1 ,
+                                  'border':True ,
+                                  "align": "center",})
+        main_title = file.add_format({'bold':True,
+                                      'font_size':20,
+                                      "align": "center",
+                                      "valign": "vcenter",
+                                      })
+        sub_title = file.add_format({'bold':True,
+                                      "align": "center",
+                                      "valign": "vcenter",
+                                      })
+        #Creating a title
+        sheet_1.merge_range('C3:E3','Clients Report',main_title)
+
+        sheet_1.merge_range('A5:C5' , 'Habib for library management',sub_title)
+
+        sheet_1.merge_range('D5:E5' , 'Phone : 0778111137' , sub_title)
+        #Creating Headers
+        sheet_1.write('A9','Employee', header)
+        sheet_1.write('B9','Table', header)
+        sheet_1.write('C9','Branch', header)
+        sheet_1.write('D9','Action', header)
+        sheet_1.write('E9','Date', header)
+
+        # insert the data to the table
+        row_count=9
+        for row in data:
+            col_count = 0
+            for item in row:
+                if col_count == 0:
+                    self.cur.execute('''
+                        SELECT name FROM Employees WHERE id=?
+                        ''',(item,))
+                    employee = self.cur.fetchone()
+                    sheet_1.write(row_count,col_count,str(employee[0]),border)
+                elif col_count == 4:
+                    sheet_1.set_column(col_count,col_count,30)
+                    sheet_1.write(row_count,col_count,str(item),border)
+                elif col_count == 1:
+                    if item == 1:
+                        table = 'Books'
+                        sheet_1.write(row_count,col_count,str(table),border)
+                    if item == 2:
+                        table = 'Clients'
+                        sheet_1.write(row_count,col_count,str(table),border)
+                    if item == 3:
+                        table = 'History'
+                        sheet_1.write(row_count,col_count,str(table),border)
+                    if item == 4:
+                        table = 'Employees'
+                        sheet_1.write(row_count,col_count,str(table),border)
+                    if item == 5:
+                        table = 'Branch'
+                        sheet_1.write(row_count,col_count,str(table),border)
+                    if item == 6:
+                        table = 'Author'
+                        sheet_1.write(row_count,col_count,str(table),border)
+                    if item == 7:
+                        table = 'Catigory'
+                        sheet_1.write(row_count,col_count,str(table),border)
+                    if item == 8:
+                        table = 'Publisher'
+                        sheet_1.write(row_count,col_count,str(table),border)
+                    if item == 9:
+                        table = 'Daily movements'
+                        sheet_1.write(row_count,col_count,str(table),border)
+                elif col_count == 2:
+                    self.cur.execute('''
+                        SELECT name FROM Branch WHERE id=?
+                        ''',(item+1,))
+                    branch = self.cur.fetchone()
+                    sheet_1.write(row_count,col_count,str(branch[0]),border)
+                elif col_count == 3:
+                    if item == 1:
+                        action = 'Login'
+                        sheet_1.write(row_count,col_count,str(action),border)
+                    if item == 2:
+                        action = 'Logout'
+                        sheet_1.write(row_count,col_count,str(action),border)
+                    if item == 3:
+                        action = 'Add'
+                        sheet_1.write(row_count,col_count,str(action),border)
+                    if item == 4:
+                        action = 'Edit'
+                        sheet_1.write(row_count,col_count,str(action),border)
+                    if item == 5:
+                        action = 'Delete'
+                        sheet_1.write(row_count,col_count,str(action),border)
+                else:
+                    sheet_1.write(row_count,col_count,str(item),border)
+                col_count+=1
+            row_count+=1
+        file.close()
+        self.statusBar().showMessage("History Exported")
+
+
 
     ##########################################  Reports  #############################################
     ######################## Books
